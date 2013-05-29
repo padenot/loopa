@@ -1,0 +1,162 @@
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+}
+.ontop {
+  position: relative;
+  z-index: 2;
+}
+body {
+  background: #111;
+}
+</style>
+<script>
+var ctx = new AudioContext();
+analyzer = ctx.createAnalyser();
+gain = ctx.createGain();
+gain.connect(ctx.destination);
+var url = "/think-looped.wav";
+last_freq_data =  undefined;
+last_freq_data_decrement =  undefined;
+drawFactor = 8;
+buffer = null;
+var cvs, c, h, w;
+var r = [0,1],
+    g = [80,3],
+    b = [160,1];
+
+function getFile(url, callback) {
+  var request = new XMLHttpRequest();
+  request.open("GET", url, true);
+  request.responseType = "arraybuffer";
+
+  request.onload = function() {
+    ctx.decodeAudioData(request.response, function(data) {
+          callback(data, undefined);
+        }, function() {
+          callback(undefined, "Error decoding the file " + url);
+        });
+  }
+  request.send();
+}
+
+function startAnimation() {
+  cvs = document.querySelector("canvas");
+  cvs.width = w = window.innerWidth;
+  cvs.height = h = window.innerHeight;
+  c = cvs.getContext("2d");
+  requestAnimationFrame(drawLoop);
+}
+
+function advance(c) {
+  c[0]+=c[1];
+  if(c[0] <= 0 || c[0] >= 200) {
+    c[1]=-c[1];
+  }
+}
+
+function drawLoop() {
+  var array = new Float32Array(512);
+  var binW = Math.round(w / array.length);
+  // motion blur
+  c.fillStyle = "rgba(20, 20, 20, 0.4)";
+  c.fillRect(0, 0, w, h);
+
+  if (isplaying()) {
+    analyzer.getFloatFrequencyData(array);
+
+    for (var i = 0; i < array.length; i++) {
+      if (!(i % 300)) {
+        advance(r);
+        advance(g);
+        advance(b);
+      }
+      c.fillStyle = 'rgba('+r[0]+','+g[0]+','+b[0]+', 1)';
+      c.fillRect(i * binW, h, binW, ( -array[i] - 100 ) * drawFactor);
+      c.fillRect(i * binW, h, binW, array[i]);
+    }
+    last_freq_data = array;
+    last_freq_data_decrement = new Float32Array(512);
+    for (var i = 0; i < last_freq_data_decrement.length; i++) {
+      last_freq_data_decrement[i] = (last_freq_data[i] + 100) / 40;
+    }
+  } else {
+    c.fillStyle = 'rgba('+r[0]+','+g[0]+','+b[0]+', 1)';
+    for (var i = 0; i < last_freq_data.length; i++) {
+      if (last_freq_data[i] > -100) {
+        last_freq_data[i] -= last_freq_data_decrement[i];
+      }
+      c.fillRect(i * binW, h, binW, ( -last_freq_data[i] - 100 ) * drawFactor);
+    }
+  }
+  requestAnimationFrame(drawLoop);
+}
+
+function isplaying() {
+  return document.querySelector("#play-pause").innerHTML == "Pause";
+}
+
+function play() {
+  if (buffer) {
+    
+  }
+  getFile(url, function(data) {
+    source = ctx.createBufferSource();
+    source.buffer = data;
+    source.loop = true;
+    source.connect(analyzer);
+    source.connect(gain);
+    source.start(0);
+    startAnimation();
+  });
+}
+
+function pause() {
+  source.stop(0);
+}
+
+function toggle(t) {
+  if (t.innerHTML == "Play") {
+    t.innerHTML = "Pause";
+    play();
+  } else {
+    t.innerHTML = "Play";
+    pause();
+  }
+}
+
+document.addEventListener("DOMContentLoaded", function() {
+  document.querySelector("#playbackRate").addEventListener("input", function(e) {
+      source.playbackRate.value = e.target.value;
+  });
+  document.querySelector("#gain").addEventListener("input", function(e) {
+      gain.gain.value = e.target.value;
+  });
+  document.querySelector("#play-pause").addEventListener("click", function(e) {
+    toggle(e.target);
+  });
+  document.addEventListener("keypress", function(e) {
+    if (e.charCode == 32) {
+      toggle(document.querySelector("#play-pause"));
+    }
+  });
+});
+</script>
+</head>
+<body>
+<canvas></canvas>
+<div class=ontop>
+  <button id=play-pause>Play</button>
+  <input id=playbackRate type=range min="0.1" max="5.0" step="0.1" value="1.0">
+  <input id=gain type=range min="0.0" max="1.0" step="0.01" value="1.0">
+</div>
+</body>
+</html>
